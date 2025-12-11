@@ -84,13 +84,7 @@ jobs:
 
       - name: Initialize repo and sync manifest
         run: |
-          # Choose shallow depth to save time; remove --depth for full history
-          if [ -z "${MANIFEST_FILE}" ]; then
-            repo init -u "${MANIFEST_URL}" -b "${MANIFEST_BRANCH}" --depth=1 --no-repo-verify
-          else
-            repo init -u "${MANIFEST_URL}" -b "${MANIFEST_BRANCH}" -m "${MANIFEST_FILE}" --depth=1 --no-repo-verify
-          fi
-          # Sync only what we need; -c keeps only current branch
+          repo init -u "${MANIFEST_URL}" -b "${MANIFEST_BRANCH}" --depth=1 --no-repo-verify
           repo sync -c --no-clone-bundle --no-tags -j$(nproc) || repo sync -c --no-clone-bundle --no-tags -j1
 
       - name: Verify build script exists and make executable
