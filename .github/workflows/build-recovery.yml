@@ -46,7 +46,7 @@ jobs:
           # Common dependencies for Android builds; adjust as needed for your recovery project
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             bc bison build-essential ccache curl flex git-core gnupg gperf \
-            lib32ncurses5 lib32z1 lib32stdc++6 libncurses5 libssl-dev \
+            lib32z1 lib32stdc++6 libncurses6 libssl-dev \
             libxml2-utils lzop python3 unzip zip
           # Ensure ccache dir exists
           mkdir -p "${CCACHE_DIR}"
