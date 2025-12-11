@@ -74,12 +74,7 @@ jobs:
 
       - name: Prepare build variables
         run: |
-          # If invoked via workflow_dispatch, inputs will be present; fallback to commit message for manifest URL on push
-          if [ -n "${{ github.event.inputs.manifest_url }}" ]; then
-            echo "MANIFEST_URL=${{ github.event.inputs.manifest_url }}" >> $GITHUB_ENV
-          else
-            echo "MANIFEST_URL=${{ github.event.head_commit.message }}" >> $GITHUB_ENV
-          fi
+          echo "MANIFEST_URL=${{ github.event.inputs.manifest_url }}" >> $GITHUB_ENV
           echo "MANIFEST_BRANCH=${{ github.event.inputs.manifest_branch }}" >> $GITHUB_ENV
           echo "MANIFEST_FILE=${{ github.event.inputs.manifest_file }}" >> $GITHUB_ENV
           echo "DEVICE=${{ github.event.inputs.device }}" >> $GITHUB_ENV
