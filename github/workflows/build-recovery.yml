@@ -1,0 +1,108 @@
+# GitHub Actions workflow to build an Android recovery image
+# Customize MANIFEST_URL, MANIFEST_BRANCH, MANIFEST_FILE, DEVICE, VARIANT via workflow_dispatch inputs or environment.
+# Trigger: manual (workflow_dispatch) and pushes to main
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_url:
+        description: 'Git repo manifest URL (example: https://github.com/LineageOS/android)' 
+        required: true
+        default: 'https://github.com/LineageOS/android.git'
+      manifest_branch:
+        description: 'Manifest branch or tag'
+        required: true
+        default: 'lineage-18.1'
+      manifest_file:
+        description: 'Optional manifest file path in the manifest repo (ex: default.xml)'
+        required: false
+        default: ''
+      device:
+        description: 'Device codename (ex: walleye, sargo, <your_device>)'
+        required: true
+        default: 'your_device'
+      variant:
+        description: 'Build variant (userdebug/user/eng)'
+        required: false
+        default: 'userdebug'
+  push:
+    branches:
+      - main
+
+jobs:
+  build-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      # Adjust these defaults if you prefer environment-level defaults
+      JAVA_VERSION: '8'
+      CCACHE_DIR: ${{ runner.temp }}/ccache
+    steps:
+      - name: Checkout (repo containing this workflow)
+        uses: actions/checkout@v4
+
+      - name: Install apt dependencies
+        run: |
+          sudo apt-get update -y
+          # Common dependencies for Android builds; adjust as needed for your recovery project
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            bc bison build-essential ccache curl flex git-core gnupg gperf \
+            lib32ncurses5 lib32z1 lib32stdc++6 libncurses5 libssl-dev \
+            libxml2-utils lzop openjdk-${{ env.JAVA_VERSION }}-jdk python-is-python3 \
+            unzip zip
+          # Ensure ccache dir exists
+          mkdir -p "${{ env.CCACHE_DIR }}"
+          export CCACHE_DIR="${{ env.CCACHE_DIR }}"
+
+      - name: Install repo tool
+        run: |
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o /usr/local/bin/repo
+          sudo chmod a+x /usr/local/bin/repo
+          repo --version
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-ccache-${{ hashFiles('**/Android.bp','**/manifest.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: Prepare build variables
+        run: |
+          echo "MANIFEST_URL=${{ github.event.inputs.manifest_url || github.event.head_commit.message }}" >> $GITHUB_ENV
+          echo "MANIFEST_BRANCH=${{ github.event.inputs.manifest_branch }}" >> $GITHUB_ENV
+          echo "MANIFEST_FILE=${{ github.event.inputs.manifest_file }}" >> $GITHUB_ENV
+          echo "DEVICE=${{ github.event.inputs.device }}" >> $GITHUB_ENV
+          echo "VARIANT=${{ github.event.inputs.variant }}" >> $GITHUB_ENV
+          echo "JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64" >> $GITHUB_ENV
+
+      - name: Initialize repo and sync manifest
+        run: |
+          # Choose shallow depth to save time; remove --depth for full history
+          if [ -z "${MANIFEST_FILE}" ]; then
+            repo init -u "${MANIFEST_URL}" -b "${MANIFEST_BRANCH}" --depth=1 --no-repo-verify
+          else
+            repo init -u "${MANIFEST_URL}" -b "${MANIFEST_BRANCH}" -m "${MANIFEST_FILE}" --depth=1 --no-repo-verify
+          fi
+          # Sync only what we need; -c keeps only current branch
+          repo sync -c --no-clone-bundle --no-tags -j$(nproc) || repo sync -c --no-clone-bundle --no-tags -j1
+
+      - name: Run build script
+        run: |
+          chmod +x ./.github/scripts/build-recovery.sh
+          ./.github/scripts/build-recovery.sh
+        env:
+          DEVICE: ${{ env.DEVICE }}
+          VARIANT: ${{ env.VARIANT }}
+          JAVA_HOME: ${{ env.JAVA_HOME }}
+          CCACHE_DIR: ${{ env.CCACHE_DIR }}
+
+      - name: Upload recovery artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-${{ env.DEVICE }}-${{ github.run_id }}
+          path: |
+            out/target/product/${{ env.DEVICE }}/recovery.img
+            out/target/product/${{ env.DEVICE }}/ramdisk-recovery.img || true
+            out/target/product/${{ env.DEVICE }}/recovery/*.img || true
