@@ -15,7 +15,7 @@ on:
       manifest_file:
         description: 'Optional manifest file path in the manifest repo (ex: default.xml)'
         required: false
-        default: ''
+        default: 'default.xml'
       device:
         description: 'Device codename (ex: walleye, sargo, <your_device>)'
         required: false
