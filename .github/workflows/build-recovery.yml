@@ -6,11 +6,11 @@ on:
     inputs:
       manifest_url:
         description: 'Git repo manifest URL (example: https://github.com/LineageOS/android)'
-        required: true
+        required: false
         default: 'https://github.com/LineageOS/android.git'
       manifest_branch:
         description: 'Manifest branch or tag'
-        required: true
+        required: false
         default: 'lineage-18.1'
       manifest_file:
         description: 'Optional manifest file path in the manifest repo (ex: default.xml)'
@@ -18,8 +18,8 @@ on:
         default: ''
       device:
         description: 'Device codename (ex: walleye, sargo, <your_device>)'
-        required: true
-        default: 'your_device'
+        required: false
+        default: 'sargo'
       variant:
         description: 'Build variant (userdebug/user/eng)'
         required: false
