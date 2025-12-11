@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       manifest_url:
-        description: 'Git repo manifest URL (example: https://github.com/LineageOS/android)' 
+        description: 'Git repo manifest URL (example: https://github.com/LineageOS/android)'
         required: true
         default: 'https://github.com/LineageOS/android.git'
       manifest_branch:
@@ -33,9 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
-      # Adjust these defaults if you prefer environment-level defaults
+      # Remove runner.temp (not valid in top-level env). Use workspace-based ccache path instead.
       JAVA_VERSION: '8'
-      CCACHE_DIR: ${{ runner.temp }}/ccache
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
     steps:
       - name: Checkout (repo containing this workflow)
         uses: actions/checkout@v4
@@ -47,11 +47,10 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             bc bison build-essential ccache curl flex git-core gnupg gperf \
             lib32ncurses5 lib32z1 lib32stdc++6 libncurses5 libssl-dev \
-            libxml2-utils lzop openjdk-${{ env.JAVA_VERSION }}-jdk python-is-python3 \
-            unzip zip
+            libxml2-utils lzop python3 unzip zip
           # Ensure ccache dir exists
-          mkdir -p "${{ env.CCACHE_DIR }}"
-          export CCACHE_DIR="${{ env.CCACHE_DIR }}"
+          mkdir -p "${CCACHE_DIR}"
+          export CCACHE_DIR="${CCACHE_DIR}"
 
       - name: Install repo tool
         run: |
@@ -67,14 +66,26 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ccache-
 
+      - name: Set up Java (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+
       - name: Prepare build variables
         run: |
-          echo "MANIFEST_URL=${{ github.event.inputs.manifest_url || github.event.head_commit.message }}" >> $GITHUB_ENV
+          # If invoked via workflow_dispatch, inputs will be present; fallback to commit message for manifest URL on push
+          if [ -n "${{ github.event.inputs.manifest_url }}" ]; then
+            echo "MANIFEST_URL=${{ github.event.inputs.manifest_url }}" >> $GITHUB_ENV
+          else
+            echo "MANIFEST_URL=${{ github.event.head_commit.message }}" >> $GITHUB_ENV
+          fi
           echo "MANIFEST_BRANCH=${{ github.event.inputs.manifest_branch }}" >> $GITHUB_ENV
           echo "MANIFEST_FILE=${{ github.event.inputs.manifest_file }}" >> $GITHUB_ENV
           echo "DEVICE=${{ github.event.inputs.device }}" >> $GITHUB_ENV
           echo "VARIANT=${{ github.event.inputs.variant }}" >> $GITHUB_ENV
-          echo "JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64" >> $GITHUB_ENV
+          # setup-java sets JAVA_HOME in the runner environment; persist it for later steps
+          echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
 
       - name: Initialize repo and sync manifest
         run: |
@@ -87,9 +98,21 @@ jobs:
           # Sync only what we need; -c keeps only current branch
           repo sync -c --no-clone-bundle --no-tags -j$(nproc) || repo sync -c --no-clone-bundle --no-tags -j1
 
+      - name: Verify build script exists and make executable
+        run: |
+          echo "Looking for build script at .github/scripts/build-recovery.sh"
+          if [ ! -f .github/scripts/build-recovery.sh ]; then
+            echo "ERROR: build script not found at .github/scripts/build-recovery.sh"
+            echo "Current .github/ contents:"
+            ls -la .github || true
+            echo "Current .github/scripts/ contents (if present):"
+            ls -la .github/scripts || true
+            exit 1
+          fi
+          chmod +x .github/scripts/build-recovery.sh
+
       - name: Run build script
         run: |
-          chmod +x ./.github/scripts/build-recovery.sh
           ./.github/scripts/build-recovery.sh
         env:
           DEVICE: ${{ env.DEVICE }}
@@ -104,5 +127,6 @@ jobs:
           name: recovery-${{ env.DEVICE }}-${{ github.run_id }}
           path: |
             out/target/product/${{ env.DEVICE }}/recovery.img
-            out/target/product/${{ env.DEVICE }}/ramdisk-recovery.img || true
-            out/target/product/${{ env.DEVICE }}/recovery/*.img || true
+            out/target/product/${{ env.DEVICE }}/ramdisk-recovery.img
+            out/target/product/${{ env.DEVICE }}/recovery/*.img
+          if-no-files-found: ignore
